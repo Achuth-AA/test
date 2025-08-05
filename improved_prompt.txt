@@ -1,0 +1,282 @@
+PROMPT_JMX_GENERATE = """# Task
+
+- Convert a given OpenAPI documentation or Postman collection into a **runnable** and structured JMeter test script (JMX format).
+
+- The generated script must be fully dynamic, ensuring correct variable substitution, proper XML formatting, and compatibility with JMeter 5.6.3.
+
+- Ensure seamless execution in JMeter without any manual modifications.
+
+- The result must start with **<?xml version="1.0" encoding="UTF-8"?>** only. No additional symbols like ``` or code blocks.
+
+
+# Key Requirements:
+
+    - Include all API endpoints from the collection in the output, ensuring no partial generation.
+
+    - **Add the prefix `{transaction_prefix}` to all endpoint names** (paths in OpenAPI or names in Postman).
+
+    - The Thread Group Name should be same as the collection name from the input document.
+
+    - Add UserDefinedVariables Config for all environment variables that appear in the collection.
+
+    - Create CSVDataSet Config blocks, with UTF-8 encoding, for **each and every** API endpoint that has request body params, query parameters, or form data.
+
+    - Ensure Query Params from API endpoint URLs are correctly parameterized and referenced in the JMeter script.
+
+    - Handle both HTTP and GraphQL request formats correctly without overriding one another.
+
+    - Create separate HTTP Request blocks for **each and every** API Endpoint of the collection, supporting both standard HTTP requests and GraphQL queries/mutations.
+
+    - Each HTTP Request should have **HeaderManager** Block with necessary header fields required in the respective API endpoint with parameterized placeholders.
+
+    - A Constant Timer block must be added inside each HTTP Request with a parameterized delay. The delay variable `P_delay` should be defined in **User Defined Variables Block** with a default value of 5000ms.
+
+    - Constant Timer **must always** be placed inside the corresponding **HTTP Request** (HTTPSamplerProxy) hashTree.
+
+    - Create Response Assertion Block for each API endpoint to validate the response code. Default to 200 unless otherwise specified in the API documentation.
+
+    - Create a separate **Thread Group** named `{CollectionName}_CSV_dummy` to house all BeanShellPreProcessor blocks for CSV File Generation.
+
+    - Add one 'RegexExtractor' for the login/authentication API Endpoint to fetch access_token and store it in variable 'C_auth_token'. The login endpoint should be identified by looking for endpoints with paths containing 'login', 'auth', 'token', or similar authentication-related terms.
+
+    - Extract all API Details from the Collection, including request body, headers, endpoint URL, query parameters, and expected response codes.
+
+    - Create 'ResultCollector' Block at the end to show the test execution results in proper format.
+
+    - The entire collection and environment variables must be converted into a single script. Do not give partial responses.
+
+    - The Base_URL should be parameterized as 'P_base_url' and included with other environment variables.
+
+    - Ensure Proper XML Output Format. The output must:
+        -- Begin with <?xml version="1.0" encoding="UTF-8"?>
+        -- Contain no markdown-style code blocks (e.g., triple backticks like ```xml)
+        -- Be valid, well-formed XML only
+        -- Include no additional explanations after the JMX output
+
+
+# Detailed Instructions on Requirements:
+
+    ## Variable Naming Convention:
+        - Use prefix `P_` for all user-defined parameters (e.g., P_username, P_base_url)
+        - Use prefix `C_` for captured/extracted variables (e.g., C_auth_token)
+        - Environment variables from the collection should be prefixed with `P_`
+
+    ## HTTP Request Block Structure:
+        - The 'testname' for each request block should match the endpoint name from the collection
+        - Replace any special characters (like '&', '/', '\\', etc.) in API names with hyphens
+        - For each API Endpoint containing request body, query parameters, or form data:
+            -- Create placeholders for all fields and prefix them with `P_`
+            -- Create a dedicated CSV Data Set config with matching variable names
+            -- Ensure proper JSON formatting with escaped quotes where necessary
+        - The request body structure should follow this format:
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                    <elementProp name="" elementType="HTTPArgument">
+                        <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                        <stringProp name="Argument.value">{"userId": "${P_userId}", "products": ${P_products}}</stringProp>
+                        <stringProp name="Argument.metadata">=</stringProp>
+                    </elementProp>
+                </collectionProp>
+            </elementProp>
+
+    ## User Defined Variables Block:
+        - Must include all environment variables from the collection
+        - Include P_delay with default value 5000
+        - Include transaction_prefix with appropriate value
+        - Structure:
+            <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+                <collectionProp name="Arguments.arguments">
+                    <elementProp name="P_variable_name" elementType="Argument">
+                        <stringProp name="Argument.name">P_variable_name</stringProp>
+                        <stringProp name="Argument.value">variable_value</stringProp>
+                        <stringProp name="Argument.metadata">=</stringProp>
+                    </elementProp>
+                </collectionProp>
+            </Arguments>
+
+    ## Data Type Handling:
+        - Numbers: Keep as numbers without quotes (e.g., "age": ${P_age})
+        - Strings: Wrap in quotes (e.g., "name": "${P_name}")
+        - Booleans: Use without quotes (e.g., "active": ${P_active})
+        - Arrays: Maintain JSON array format (e.g., "items": ${P_items})
+        - Null values: Use null without quotes
+
+    ## Query Parameters Handling:
+        - Extract query parameters from the URL (everything after '?')
+        - Add them to the HTTP Request's Parameters section, not in the URL path
+        - Each parameter should be added as a separate elementProp
+        - Parameters with empty or null values should have empty string as value
+        - Example structure:
+            <elementProp name="param_name" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.name">param_name</stringProp>
+                <stringProp name="Argument.value">${P_param_name}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+                <boolProp name="HTTPArgument.use_equals">true</boolProp>
+            </elementProp>
+
+    ## CSV DataSet Config Structure:
+        - Place all CSV configs at the beginning of the main Thread Group
+        - Each CSV config must have a unique, descriptive filename
+        - Filename convention: {endpoint_name}_data.csv
+        - Required properties:
+            <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="{Endpoint} CSV Data" enabled="true">
+                <stringProp name="filename">{endpoint_name}_data.csv</stringProp>
+                <stringProp name="fileEncoding">UTF-8</stringProp>
+                <boolProp name="ignoreFirstLine">true</boolProp>
+                <stringProp name="delimiter">,</stringProp>
+                <stringProp name="quotedData">false</stringProp>
+                <boolProp name="recycle">true</boolProp>
+                <boolProp name="stopThread">false</boolProp>
+                <stringProp name="shareMode">shareMode.all</stringProp>
+                <stringProp name="variableNames">P_var1,P_var2,P_var3</stringProp>
+            </CSVDataSet>
+            <hashTree/>
+
+    ## Headers Handling:
+        - Extract headers from each API endpoint in the collection
+        - Common headers like Content-Type, Authorization should be included
+        - Authorization header should use the extracted token: Bearer ${C_auth_token}
+        - Structure:
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                    <elementProp name="Header-Name" elementType="Header">
+                        <stringProp name="Header.name">Header-Name</stringProp>
+                        <stringProp name="Header.value">Header-Value</stringProp>
+                    </elementProp>
+                </collectionProp>
+            </HeaderManager>
+
+    ## GraphQL Request Handling:
+        - Detect GraphQL requests by checking if body.mode is 'graphql' or endpoint path contains 'graphql'
+        - Use GraphQLHTTPSamplerGui as guiclass for GraphQL requests
+        - Set method to POST and Content-Type to application/json
+        - Structure the query and variables properly:
+            <HTTPSamplerProxy guiclass="GraphQLHTTPSamplerGui" testclass="HTTPSamplerProxy" testname="${transaction_prefix}GraphQL Query">
+                <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                    <collectionProp name="Arguments.arguments">
+                        <elementProp name="" elementType="HTTPArgument">
+                            <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                            <stringProp name="Argument.value">{"query": "${P_GraphQLQuery}", "variables": ${P_GraphQLVariables}}</stringProp>
+                            <stringProp name="Argument.metadata">=</stringProp>
+                        </elementProp>
+                    </collectionProp>
+                </elementProp>
+            </HTTPSamplerProxy>
+
+    ## BeanShellPreProcessor for CSV Generation:
+        - Create one BeanShellPreProcessor for each endpoint that requires CSV data
+        - Place all preprocessors in the dummy thread group
+        - Include proper error handling in the script
+        - CSV file should contain headers as first row and sample data as subsequent rows
+        - Script template:
+            import java.io.*;
+            
+            String filePath = "{endpoint_name}_data.csv";
+            File csvFile = new File(filePath);
+            FileWriter writer = new FileWriter(csvFile);
+            
+            try {
+                // Write headers
+                writer.append("P_param1,P_param2,P_param3\\n");
+                // Write sample data
+                writer.append("value1,value2,value3\\n");
+                writer.flush();
+                writer.close();
+                log.info("CSV file created successfully at: " + filePath);
+            } catch (IOException e) {
+                log.error("Error writing CSV file: " + e.getMessage());
+            }
+
+    ## RegexExtractor for Authentication Token:
+        - Place immediately after the login/authentication request
+        - Use appropriate regex pattern based on the response format
+        - Common patterns:
+            -- For JSON: "access_token"\\s*:\\s*"([^"]+)"
+            -- For JWT in JSON: "token"\\s*:\\s*"([^"]+)"
+            -- For custom format: Adapt based on actual response
+        - Set default value to "NOT_FOUND" to identify extraction failures
+        - Structure:
+            <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="Extract Auth Token" enabled="true">
+                <stringProp name="RegexExtractor.useHeaders">false</stringProp>
+                <stringProp name="RegexExtractor.refname">C_auth_token</stringProp>
+                <stringProp name="RegexExtractor.regex">"access_token"\\s*:\\s*"([^"]+)"</stringProp>
+                <stringProp name="RegexExtractor.template">$1$</stringProp>
+                <stringProp name="RegexExtractor.default">NOT_FOUND</stringProp>
+                <stringProp name="RegexExtractor.match_number">1</stringProp>
+            </RegexExtractor>
+
+    ## Response Assertion:
+        - Default to checking for 200 status code
+        - If API documentation specifies different success codes (201, 204, etc.), use those
+        - Can add multiple expected codes if needed
+        - Structure:
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Response Assertion" enabled="true">
+                <collectionProp name="Asserion.test_strings">
+                    <stringProp name="49586">200</stringProp>
+                </collectionProp>
+                <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+                <boolProp name="Assertion.assume_success">false</boolProp>
+                <intProp name="Assertion.test_type">8</intProp>
+            </ResponseAssertion>
+
+    ## ResultCollector Configuration:
+        - Must include all necessary metrics for test analysis
+        - Place at the end of the test plan, outside thread groups
+        - Include comprehensive save configuration:
+            <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
+                <boolProp name="ResultCollector.error_logging">false</boolProp>
+                <objProp>
+                    <name>saveConfig</name>
+                    <value class="SampleSaveConfiguration">
+                        <time>true</time>
+                        <latency>true</latency>
+                        <timestamp>true</timestamp>
+                        <success>true</success>
+                        <label>true</label>
+                        <code>true</code>
+                        <message>true</message>
+                        <threadName>true</threadName>
+                        <dataType>true</dataType>
+                        <encoding>false</encoding>
+                        <assertions>true</assertions>
+                        <subresults>true</subresults>
+                        <responseData>false</responseData>
+                        <samplerData>false</samplerData>
+                        <xml>false</xml>
+                        <fieldNames>true</fieldNames>
+                        <responseHeaders>false</responseHeaders>
+                        <requestHeaders>false</requestHeaders>
+                        <responseDataOnError>false</responseDataOnError>
+                        <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+                        <assertionsResultsToSave>0</assertionsResultsToSave>
+                        <bytes>true</bytes>
+                        <sentBytes>true</sentBytes>
+                        <url>true</url>
+                        <threadCounts>true</threadCounts>
+                        <idleTime>true</idleTime>
+                        <connectTime>true</connectTime>
+                    </value>
+                </objProp>
+                <stringProp name="filename"></stringProp>
+            </ResultCollector>
+
+# Error Handling and Edge Cases:
+
+    - If no authentication endpoint is found, skip the RegexExtractor but still include Authorization headers where needed
+    - Handle endpoints with no parameters by creating empty Arguments blocks
+    - For endpoints with mixed content types (form-data, JSON, etc.), use appropriate HTTPArgument configurations
+    - Ensure all XML special characters are properly escaped (&quot; for ", &amp; for &, etc.)
+    - Handle nested JSON objects and arrays properly in request bodies
+    - For file upload endpoints, use appropriate multipart configuration
+
+# Output Requirements:
+
+    - The output must be a complete, valid JMX file
+    - No explanatory text before or after the XML
+    - Must start with <?xml version="1.0" encoding="UTF-8"?>
+    - Must be loadable in JMeter 5.6.3 without any errors
+    - All placeholders must be properly formatted for JMeter variable substitution
+    - **CRITICAL: Output ONLY the JMX XML content. No explanations, no descriptions, no text before or after the XML. The response should contain ONLY the XML starting with <?xml version="1.0" encoding="UTF-8"?> and nothing else.**
+"""

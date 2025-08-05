@@ -1,0 +1,473 @@
+PROMPT_JMX_GENERATE = """# Task
+
+- Convert a given OpenAPI doc into a **runnable** and structured JMeter test script (JMX format).
+
+- The generated script must be fully dynamic, ensuring correct variable substitution, proper XML formatting, and
+
+  compatibility with JMeter 5.6.3.
+
+  Ensure seamless execution in JMeter.
+
+- The result must start with **<?xml version="1.0" encoding="UTF-8"?>** only. No additional symbols like ``` or
+
+  code blocks.
+
+
+# Key Requirements:
+
+    - Include all API endpoints in the output, ensuring no partial generation.
+
+    - **Add the prefix `{transaction_prefix}` to all endpoint names (paths in Swagger or names in Postman).**
+
+    - The Thread Group Name should be same as the name of collection name.
+
+    - Add UserDefinedVariables Config or 'Arguments' Block for all environment variables appear in Thread Group.
+
+    - Create CSVDataSet Config blocks, with UTF-8 encoding, for *each and every** API endpoint request body params and
+
+      query parameters.
+
+    - Ensure Query Params from API endpoints URL are correctly parameterized and referenced in the JMeter script.
+
+    - Handle both HTTP and GraphQL request formats correctly without overriding one another.
+
+    - Create separate HTTP Request blocks for **each and every** API Endpoint of the collection, supporting both
+
+      standard HTTP requests and GraphQL queries/mutations.
+
+    - Each HTTP Request should have **HeaderManager** Block with necessary header fields requireed in the respective
+
+      API endpoint with parameterzied Placeholders
+
+    - A constant time block has to be added with a parameterized delay. The value of delay is defined as a new variable
+
+      in **User Defined Variables Block** as 5000ms
+
+    - Constant Timer **must always** be placed inside the corresponding **HTTP Request** (HTTPSamplerProxy) hashTree
+
+      defined in **User Defined Variables Block**.
+
+    - Create Response Assertion Block for each API endpoint to validate the response code to be 200.
+
+    - Create a separate **Thread Group** named `CollectionName_CSV_dummy` to house all BeanShellPreProcessor blocks
+
+      for CSV File Generation.
+
+    - Add one 'RegexExtractor' for the given login API Endpoint {login_endpoint} to fetch access_token and store the
+
+    variable as 'C_auth_token'.
+
+    - Extract API Details from Collection, like request body, headers, endpoint URL, and query parameters.
+
+    - Create 'ResultCollector' Block in the end to show the different run results in proper format.
+
+    - We expect entire collection and environment variables converted into a single scipt. Do not give partial
+
+      responses.
+
+    - The Base_URL is parameterized and kept the values along with other ENV variables. Also the name of parameter
+
+      should be starting like 'P_base_url'
+
+    - Ensure Proper XML Output Format. The output must begin with:
+
+        -- No markdown-style code blocks (e.g., triple backticks like xml).
+
+        -- Only valid XML output.
+
+        -- No additional explanations after the JMX output.
+
+
+# Detailed Instructions on Requirements:
+
+    - Ensure you wrap each block to be dynamic with the following format:
+
+        -- <hashTree>
+
+            -- <elementProp>
+
+                -- <stringProp name="HTTPSampler.path">/api/v1/login</stringProp>
+
+            -- </elementProp>
+
+        -- </hashTree>
+
+
+    - HTTP Request Block
+
+        -- The 'testname' for each request block should be same as name in collection. But it must never have any
+
+           special characters, if found any symbols like '&' in API name, just replace them with hyphens.
+
+        -- For each API Endpoint, which contains request body or query parameters:
+
+            -- Create placeholders for all the fields in *request body* and/or **query parameters**
+
+               and/or **form data**, and prefix them with `P_`.
+
+            -- Create a dedicated CSV Data Set config internally and put placeholders for the values of each field.
+
+            -- The structure of Request Body should look like
+
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+
+                    <collectionProp name="Arguments.arguments">
+
+                    <elementProp name="" elementType="HTTPArgument">
+
+                        <boolProp name="HTTPArgument.always_encode">false</boolProp>
+
+                        <stringProp name="Argument.value">{ &quot;userId&quot;: ${P_userId},
+
+                                            &quot;products&quot;: ${P_products} }</stringProp>
+
+                        <stringProp name="Argument.metadata">=</stringProp>
+
+                    </elementProp>
+
+                    </collectionProp>
+
+                </elementProp>
+
+
+    - HTTPSamplerArguments (User Defined Variables) Rules:
+
+        -- Ensure Request Body and Query Parameters Appear inJMeter's "Body Data" or "Query Parameters" Section. Make
+
+           Sure You Parameterize them Correctly and prefix them with `P_`.
+
+        -- Ensure all the endpoints having request body or query parameters with parameters are correctly parameterized
+
+           and referenced in the JMeter script.
+
+        -- Always use stringProp <stringProp name="shareMode">shareMode.all</stringProp> instead of boolProp for
+
+           CSV DataSet.
+
+        -- Ensure it always appears even if the request body or query parameters are empty.
+
+        -- Maintain correct JSON formatting inside <stringProp>.
+
+
+    - UserDefinedVariables Config Block or Arguments Block
+
+        -- Ensure that the each Arguments Block is correctly defined and referenced in the JMeter script for the
+
+           respective API Endpoint.
+
+        -- Make arguments dynamic and parameterize them correctly. It include collectionProp, elementProp, StringProp
+
+           in hashTree.
+
+        -- The structure of Argumnents Block should look like
+
+            <Arguments>
+
+                <collectionProp>
+
+                    <elementProp>
+
+                        <stringProp>
+
+                    </elementProp>
+
+                </collectionProp>
+
+            </Arguments>
+
+
+    - Convert Environment Variables Content to User Define Variables block, with sharedMode.all within the Thread Group.
+
+        -- Ensure that all environment variables are correctly defined and referenced in the JMeter script,
+
+           and prefix them with `P_` for general parameters.
+
+
+    - Ensure proper data types:
+
+        -- Numbers remain numbers (no quotes around numeric values).
+
+        -- Booleans must be explicitly converted to strings using ${{variableName}} to prevent JMeter
+
+           type-casting errors.
+
+        -- Arrays remain arrays (JSON stays valid).
+
+
+    - Parameterizing Query Params in API request URL
+
+        -- Fetch query params from the API endpoint, and add them to request block. Query params after ? in the URL.
+
+        -- Ensure full URLs with query parameters are preserved in the generated JMX file.
+
+        -- The query parameters must be added as parameters in the HTTP Request block.
+
+        -- Also take care of query params with no value or empty values. These type of params can be assigend
+
+           with null value.
+
+        -- The query params should go in Parameters section of the HTTP Request block with all the variables in variale
+
+           column and the values are parameterzied with P_ prefix.
+
+
+    - For CSV DataSet Config
+
+        -- Set UTF-8 encoding in the CSVDataSet Config.
+
+        -- the guiclass should be TestBeanGUI.
+
+        -- Keep them in the beginning.
+
+        -- Each block should be having a closing hashTree tag like <hashTree /> without fail.
+
+        -- Generate as many CSV Data Set Config blocks as for each API endpoints having request body params and
+
+           query parameters.
+
+        -- Set Ignore First Line to TRUE
+
+        -- Ensure the variableNames property is populated with column names.
+
+        -- Dynamically replace **request body/query Params** values with placeholders, and the format remains valid.
+
+        -- Keep the structure of CSVDataSet Config as:
+
+            <stringProp name="filename">........</stringProp>
+
+            <stringProp name="fileEncoding">UTF-8</stringProp>
+
+            <boolProp name="ignoreFirstLine">true</boolProp>
+
+            <stringProp name="delimiter">,</stringProp>
+
+            <stringProp name="quotedData">false</stringProp>
+
+            <boolProp name="recycle">true</boolProp>
+
+            <boolProp name="stopThread">false</boolProp>
+
+            <stringProp name="shareMode">shareMode.all</stringProp>
+
+            <stringProp name="variableNames">.........</stringProp>
+
+
+    - For Headers Handling
+
+        -- Extract headers dynamically from Collection if they exist for any API Endpoint.
+
+        -- Use the Headers field to populate the HTTP Header Manager dynamically.
+
+        -- Headers should be formatted as:
+
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Headers" enabled="true">
+
+                <collectionProp name="HeaderManager.headers">
+
+                <elementProp name="Authorization" elementType="Header">
+
+                    <stringProp name="Header.name">Authorization</stringProp>
+
+                    <stringProp name="Header.value">Bearer ${{C_auth_token}}</stringProp>
+
+                </elementProp>
+
+                </collectionProp>
+
+            </HeaderManager>
+
+
+    - GraphQL Request Handling in JMeter:
+
+        -- Detect requests where body.mode is graphql.
+
+        -- Ensure the request method is POST.
+
+        -- Set the Content-Type header to application/json.
+
+        -- Ensure correct headers are included to match GraphQL specifications.
+
+        -- Use **GraphQL HTTP Request Sampler** so that it displays properly when the JMX file is opened in JMeter.
+
+        -- The `${P_GraphQLQuery}` should be replaced with the actual GraphQL query, and `${P_GraphQLVariables}` should
+
+           be replaced with the variables or empty if none are provided.
+
+        -- Remove any esacpe characters like **\r** carriage-return or new-line **\n** in the GraphQL query or
+
+           variables in output file. In CSC Data Set Config, ensure the query and variables are properly formatted and
+
+           no escape characters are present at all, just remove them cleanly.
+
+        -- Ensure the HTTPSampler contains the GraphQL payload by dynamically inserting the body data:
+
+            <HTTPSamplerProxy guiclass="GraphQLHTTPSamplerGui" testclass="HTTPSamplerProxy"
+
+            testname="SpaceX">
+
+                <stringProp name="HTTPSampler.domain">api.spacex.land</stringProp>
+
+                <stringProp name="HTTPSampler.protocol">https</stringProp>
+
+                <stringProp name="HTTPSampler.path">/graphql/</stringProp>
+
+                <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+
+                <stringProp name="HTTPSampler.method">POST</stringProp>
+
+                <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+
+                <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+
+                    <collectionProp name="Arguments.arguments">
+
+                    <elementProp name="" elementType="HTTPArgument" enabled="true">
+
+                        <boolProp name="HTTPArgument.always_encode">false</boolProp>
+
+                        <stringProp name="Argument.value">{"operationName":null,"query":"{
+
+                        \"query\": \"${P_GraphQLQuery}\", \"variables\":
+
+                        ${P_GraphQLVariables} }"}</stringProp>
+
+                        <stringProp name="Argument.metadata">=</stringProp>
+
+                        <boolProp name="HTTPArgument.use_equals">true</boolProp>
+
+                    </elementProp>
+
+                    </collectionProp>
+
+                </elementProp>
+
+                <stringProp name="GraphQLHTTPSampler.query">{ "query":
+
+                    "${P_GraphQLQuery}", "variables": ${P_GraphQLVariables} }</stringProp>
+
+                <boolProp name="HTTPSampler.BROWSER_COMPATIBLE_MULTIPART">false</boolProp>
+
+                <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+
+            </HTTPSamplerProxy>
+
+
+    - BeanShellPreProcessor Block for CSV File Generation:
+
+        -- All such blocks should come in the beginning of the Thread Group.
+
+        -- Generate as many BeanShellPreProcessor blocks as for each API endpoints having request body params
+
+           and/or **query parameters**.
+
+        -- The name of parameters must match as in the CSV Dataset config, with P_ prefix.
+
+        -- A custom javascript needs to be added to create csv file on local machine for all the csv variables added in
+
+           the CSV config set for respective API Endpoint with first line being headers and second line being the
+
+           values given in the request body or query params or form
+
+        -- Example script
+
+            import java.io.*;
+
+            String filePath = "data.csv"; // Change this to your desired location
+
+            File csvFile = new File(filePath);
+
+            FileWriter writer = new FileWriter(csvFile);
+
+            try {
+
+                writer.append("P_firstname,P_lastname\n");
+
+                writer.append("John,Smith\n");
+
+                writer.flush();
+
+                writer.close();
+
+                log.info("CSV file created successfully at: " + filePath);
+
+            } catch (IOException e) {
+
+                log.error("Error writing CSV file: " + e.getMessage());
+
+            }
+
+
+    - Dummy Thread Group - CollectionName_CSV_dummy
+
+        -- Add all BeanShellPreProcessor blocks to this thread group.
+
+        -- Create a dummy http request block in this thread group which calls a **GET API https://dummyjson.com/test/**.
+
+
+    - RegexExtractor Block to extract 'access_token':
+
+        -- The Access Token block needs to have correct left and right boundaries like
+
+           **"accessToken":"(.+?)","refreshToken"** to fetch the access_token from given login endpoint {login_endpoint}
+
+        -- The Created Variable of the RegEx Extractor must be used in all the other HTTP Request Samplers
+
+           Header Managers as placeholders where they need Authorization Token. Example:
+
+                authorization: Bearer {{C_auth_token}}
+
+
+    - JMeter XML Formatting Rules
+
+        -- No empty <hashTree> elements in XML.
+
+        -- Ensure proper XML structure with all required JMeter elements.
+
+        -- Ensure Boolean values remain as true or false (not strings), e.g.:
+
+            -- <boolProp name="someBooleanProperty">true</boolProp>
+
+
+    - ResultCollector Block Rules
+
+        -- This should include necessary tags like time, latency etc. whatever is required to show the results
+
+           of the run.
+
+        -- Ensure proper formatting and structure of the ResultCollector block, no incorrect blocks/tags.
+
+        -- This must not have any boolProp or StringProp kind of things
+
+        -- Example
+
+            <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector"
+
+               testname="View Results Tree" enabled="true">
+
+                <boolProp name="ResultCollector.error_logging">false</boolProp>
+
+                <objProp>
+
+                    <name>saveConfig</name>
+
+                    <value class="SampleSaveConfiguration">
+
+                        <time>true</time>
+
+                        <latency>true</latency>
+
+                        <timestamp>true</timestamp>
+
+                        // and all the other fields as well
+
+                    </value>
+
+                </objProp>
+
+                <stringProp name="filename"></stringProp>
+
+                </ResultCollector>
+
+"""
