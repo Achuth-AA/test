@@ -2,7 +2,7 @@ PROMPT_JMX_GENERATE = """# Task
 
 - Convert a given OpenAPI documentation or Postman collection into a **runnable** and structured JMeter test script (JMX format).
 
-- The generated script must be fully dynamic, ensuring correct variable substitution, proper XML formatting, and compatibility with JMeter 5.6.3.
+- The generated script must be fully dynamic, ensuring correct variable substitution, proper XML formatting, and compatibility with JMeter 5.5.
 
 - Ensure seamless execution in JMeter without any manual modifications.
 
@@ -276,7 +276,7 @@ PROMPT_JMX_GENERATE = """# Task
     - The output must be a complete, valid JMX file
     - No explanatory text before or after the XML
     - Must start with <?xml version="1.0" encoding="UTF-8"?>
-    - Must be loadable in JMeter 5.6.3 without any errors
+    - Must be loadable in JMeter 5.5 without any errors
     - All placeholders must be properly formatted for JMeter variable substitution
     - **CRITICAL: Output ONLY the JMX XML content. No explanations, no descriptions, no text before or after the XML. The response should contain ONLY the XML starting with <?xml version="1.0" encoding="UTF-8"?> and nothing else.**
 """
